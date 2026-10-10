@@ -30,4 +30,16 @@ public class DocumentController {
         ImageConversionResponseDto result = documentService.convertDocxToPdf(file);
         return ResponseEntity.ok(ApiResponse.ok(result, "DOCX converted to PDF successfully"));
     }
+
+    /**
+     * POST /api/files/documents/pptx-to-pdf
+     * Converts PPTX presentations to standard PDF.
+     */
+    @PostMapping("/pptx-to-pdf")
+    public ResponseEntity<ApiResponse<ImageConversionResponseDto>> convertPptxToPdf(
+            @RequestParam("file") MultipartFile file
+    ) throws IOException, InterruptedException {
+        ImageConversionResponseDto result = documentService.convertPptxToPdf(file);
+        return ResponseEntity.ok(ApiResponse.ok(result, "PPTX converted to PDF successfully"));
+    }
 }

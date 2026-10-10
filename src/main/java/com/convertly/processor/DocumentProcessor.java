@@ -10,12 +10,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Document Processor handling DOCX-to-PDF conversions.
- * Invokes local headless LibreOffice if available, or presents clear installation instructions.
+ * Document Processor handling Office documents (DOCX, PPTX) to PDF conversions.
+ * Invokes local or container headless LibreOffice.
  */
 @Component
 public class DocumentProcessor {
@@ -49,14 +48,17 @@ public class DocumentProcessor {
             }
         }
 
-        // Check if soffice is in system PATH
-        try {
-            Process process = new ProcessBuilder("soffice", "--version").start();
-            boolean finished = process.waitFor(2, TimeUnit.SECONDS);
-            if (finished && process.exitValue() == 0) {
-                return "soffice";
+        // Check if soffice or libreoffice is in system PATH (Linux / Docker / Mac)
+        String[] commands = {"soffice", "libreoffice"};
+        for (String cmd : commands) {
+            try {
+                Process process = new ProcessBuilder(cmd, "--version").start();
+                boolean finished = process.waitFor(2, TimeUnit.SECONDS);
+                if (finished && process.exitValue() == 0) {
+                    return cmd;
+                }
+            } catch (Exception ignored) {
             }
-        } catch (Exception ignored) {
         }
 
         return null;
@@ -66,27 +68,42 @@ public class DocumentProcessor {
      * Converts DOCX bytes to PDF.
      */
     public DocumentProcessResult convertDocxToPdf(byte[] docxBytes, String originalFilename) throws IOException, InterruptedException {
-        // Validate magic bytes: DOCX is a ZIP container starting with 'PK\x03\x04'
-        if (docxBytes == null || docxBytes.length < 4 ||
-                docxBytes[0] != 0x50 || docxBytes[1] != 0x4B || docxBytes[2] != 0x03 || docxBytes[3] != 0x04) {
-            throw new IllegalArgumentException("Invalid file format. Uploaded file is not a valid Microsoft Word (.docx) document.");
-        }
+        validateOfficeZipMagicBytes(docxBytes, "Microsoft Word (.docx)");
+        return convertDocumentToPdf(docxBytes, "input.docx", "input.pdf");
+    }
 
+    /**
+     * Converts PPTX bytes to PDF.
+     */
+    public DocumentProcessResult convertPptxToPdf(byte[] pptxBytes, String originalFilename) throws IOException, InterruptedException {
+        validateOfficeZipMagicBytes(pptxBytes, "Microsoft PowerPoint (.pptx)");
+        return convertDocumentToPdf(pptxBytes, "input.pptx", "input.pdf");
+    }
+
+    private void validateOfficeZipMagicBytes(byte[] bytes, String documentType) {
+        // Modern OpenXML (DOCX, PPTX, XLSX) files are ZIP packages starting with 'PK\x03\x04'
+        if (bytes == null || bytes.length < 4 ||
+                bytes[0] != 0x50 || bytes[1] != 0x4B || bytes[2] != 0x03 || bytes[3] != 0x04) {
+            throw new IllegalArgumentException("Invalid file format. Uploaded file is not a valid " + documentType + " document.");
+        }
+    }
+
+    private DocumentProcessResult convertDocumentToPdf(byte[] inputBytes, String tempInputName, String tempOutputName) throws IOException, InterruptedException {
         String sofficePath = detectLibreOfficeExecutable();
         if (sofficePath == null) {
             throw new IllegalStateException(
                     "LibreOffice is not installed on this system. " +
-                    "To enable DOCX-to-PDF conversion, download and install LibreOffice (https://www.libreoffice.org), " +
+                    "To enable Office-to-PDF conversion, install LibreOffice (https://www.libreoffice.org), " +
                     "or add soffice to your system PATH."
             );
         }
 
-        Path tempDir = Files.createTempDirectory("convertly_docx_");
-        Path tempDocx = tempDir.resolve("input.docx");
+        Path tempDir = Files.createTempDirectory("convertly_doc_");
+        Path tempFile = tempDir.resolve(tempInputName);
 
         try {
-            try (FileOutputStream fos = new FileOutputStream(tempDocx.toFile())) {
-                fos.write(docxBytes);
+            try (FileOutputStream fos = new FileOutputStream(tempFile.toFile())) {
+                fos.write(inputBytes);
             }
 
             ProcessBuilder pb = new ProcessBuilder(
@@ -94,30 +111,30 @@ public class DocumentProcessor {
                     "--headless",
                     "--convert-to", "pdf",
                     "--outdir", tempDir.toAbsolutePath().toString(),
-                    tempDocx.toAbsolutePath().toString()
+                    tempFile.toAbsolutePath().toString()
             );
 
             pb.redirectErrorStream(true);
             Process process = pb.start();
 
-            boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+            boolean finished = process.waitFor(45, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                throw new IOException("DOCX-to-PDF conversion timed out after 30 seconds");
+                throw new IOException("Document-to-PDF conversion timed out after 45 seconds");
             }
 
-            Path expectedPdf = tempDir.resolve("input.pdf");
+            Path expectedPdf = tempDir.resolve(tempOutputName);
             if (!Files.exists(expectedPdf)) {
                 throw new IOException("Conversion process completed, but output PDF was not generated.");
             }
 
             byte[] pdfBytes = Files.readAllBytes(expectedPdf);
-            return new DocumentProcessResult(pdfBytes, "input.pdf", pdfBytes.length);
+            return new DocumentProcessResult(pdfBytes, tempOutputName, pdfBytes.length);
         } finally {
             // Clean up temporary conversion files
             try {
-                Files.deleteIfExists(tempDir.resolve("input.pdf"));
-                Files.deleteIfExists(tempDocx);
+                Files.deleteIfExists(tempDir.resolve(tempOutputName));
+                Files.deleteIfExists(tempFile);
                 Files.deleteIfExists(tempDir);
             } catch (Exception ignored) {
             }

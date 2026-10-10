@@ -34,15 +34,27 @@ public class DocumentConversionService {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Please select a DOCX file to convert.");
         }
+        return processOfficeDocument(file, "DOCX_TO_PDF", "docx", false);
+    }
 
+    public ImageConversionResponseDto convertPptxToPdf(MultipartFile file) throws IOException, InterruptedException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Please select a PPTX presentation to convert.");
+        }
+        return processOfficeDocument(file, "PPTX_TO_PDF", "pptx", true);
+    }
+
+    private ImageConversionResponseDto processOfficeDocument(MultipartFile file, String operation, String inFmt, boolean isPptx) throws IOException, InterruptedException {
         byte[] inputBytes = file.getBytes();
-        String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "document.docx";
+        String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : ("document." + inFmt);
         String jobId = UUID.randomUUID().toString();
 
-        recordJob(jobId, "DOCX_TO_PDF", originalFilename, "docx", "pdf", (long) inputBytes.length, "PROCESSING");
+        recordJob(jobId, operation, originalFilename, inFmt, "pdf", (long) inputBytes.length, "PROCESSING");
 
         try {
-            DocumentProcessor.DocumentProcessResult result = documentProcessor.convertDocxToPdf(inputBytes, originalFilename);
+            DocumentProcessor.DocumentProcessResult result = isPptx
+                    ? documentProcessor.convertPptxToPdf(inputBytes, originalFilename)
+                    : documentProcessor.convertDocxToPdf(inputBytes, originalFilename);
 
             String baseName = originalFilename;
             int dotIdx = baseName.lastIndexOf('.');
@@ -55,7 +67,7 @@ public class DocumentConversionService {
             return new ImageConversionResponseDto(
                     jobId,
                     originalFilename,
-                    "docx",
+                    inFmt,
                     "pdf",
                     inputBytes.length,
                     result.byteSize(),

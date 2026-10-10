@@ -141,6 +141,18 @@ public class HealthController {
                 true
         ));
 
+        // Document: PPTX to PDF
+        tools.add(new ToolMetadataDto(
+                "pptx-to-pdf",
+                "PPTX to PDF",
+                "Convert Microsoft PowerPoint presentations (.pptx) into standard PDF slides.",
+                "DOCUMENTS",
+                "MVP",
+                Arrays.asList("pptx"),
+                Arrays.asList("pdf"),
+                true
+        ));
+
         // Phase 2: Audio Converter
         boolean ffmpegAvailable = audioVideoProcessor.isFfmpegAvailable();
         tools.add(new ToolMetadataDto(
