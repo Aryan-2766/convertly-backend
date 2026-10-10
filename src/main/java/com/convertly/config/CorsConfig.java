@@ -24,10 +24,11 @@ public class CorsConfig implements WebMvcConfigurer {
                 .toArray(String[]::new);
 
         registry.addMapping("/api/**")
-                .allowedOrigins(origins)
+                .allowedOriginPatterns(origins)
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true)
                 .maxAge(3600);
     }
 }
+

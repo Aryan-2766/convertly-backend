@@ -1,0 +1,8 @@
+.git
+.mvn
+target
+*.iml
+.idea
+.vscode
+application-local.properties
+powershell.cmd
